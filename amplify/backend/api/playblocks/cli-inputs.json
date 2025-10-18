@@ -13,6 +13,19 @@
           "delete"
         ]
       }
+    },
+    "/import/ics": {
+      "name": "/import/ics",
+      "lambdaFunction": "playblocksfunction",
+      "permissions": {
+        "setting": "private",
+        "auth": [
+          "create",
+          "read",
+          "update",
+          "delete"
+        ]
+      }
     }
   }
 }
