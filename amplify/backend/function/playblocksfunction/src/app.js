@@ -337,55 +337,69 @@ function buildSlots(startDate, endDate, prefs, existingEvents) {
     // Check if this day is in preferred days
     if (prefs.preferredDays && prefs.preferredDays.includes(dayOfWeek)) {
       // Parse work hours
-      const [startHour, startMin] = (prefs.workHoursStart || "09:00").split(':').map(Number);
-      const [endHour, endMin] = (prefs.workHoursEnd || "17:00").split(':').map(Number);
-      
-      const slotStart = new Date(currentDate);
-      slotStart.setHours(startHour, startMin, 0, 0);
-      
-      const slotEnd = new Date(currentDate);
-      slotEnd.setHours(endHour, endMin, 0, 0);
-      
-      // Check for conflicts with existing events
-      let availableStart = slotStart;
+  // If enforceWorkingHours is false, treat the window as full day
+  const enforce = typeof prefs.enforceWorkingHours === 'undefined' ? true : !!prefs.enforceWorkingHours;
+  const [startHour, startMin] = (enforce ? (prefs.workHoursStart || "09:00") : "00:00").split(':').map(Number);
+  const [endHour, endMin] = (enforce ? (prefs.workHoursEnd || "17:00") : "23:59").split(':').map(Number);
+
       const daySlots = [];
-      
-      for (const event of existingEvents) {
-        const eventStart = new Date(event.start);
-        const eventEnd = new Date(event.end);
-        
-        // If event conflicts with current day's work hours
-        if (eventStart.toDateString() === currentDate.toDateString()) {
-          // Add slot before event if there's time
-          if (availableStart < eventStart) {
-            const duration = (eventStart - availableStart) / (1000 * 60); // minutes
-            if (duration >= 30) { // Minimum 30-min slot
-              daySlots.push({
-                start: new Date(availableStart),
-                end: new Date(eventStart),
-                duration: duration,
-              });
+
+      // Helper to build free sub-slots for a given interval [sDate, eDate)
+      const buildSubSlots = (sDate, eDate) => {
+        let availableStart = new Date(sDate);
+        for (const event of existingEvents) {
+          const eventStart = new Date(event.start);
+          const eventEnd = new Date(event.end);
+
+          // Only consider events on the same day as availableStart
+          if (eventStart.toDateString() === availableStart.toDateString()) {
+            if (availableStart < eventStart) {
+              const duration = (eventStart - availableStart) / (1000 * 60); // minutes
+              if (duration >= 30) {
+                daySlots.push({ start: new Date(availableStart), end: new Date(eventStart), duration });
+              }
+            }
+            if (eventEnd > availableStart) {
+              availableStart = new Date(eventEnd);
             }
           }
-          // Move available start to after the event
-          if (eventEnd > availableStart) {
-            availableStart = new Date(eventEnd);
+        }
+
+        if (availableStart < eDate) {
+          const duration = (eDate - availableStart) / (1000 * 60);
+          if (duration >= 30) {
+            daySlots.push({ start: new Date(availableStart), end: new Date(eDate), duration });
           }
         }
+      };
+
+      // If work window does not wrap midnight
+      const startTotal = startHour * 60 + startMin;
+      const endTotal = endHour * 60 + endMin;
+
+      if (startTotal <= endTotal) {
+        const slotStart = new Date(currentDate);
+        slotStart.setHours(startHour, startMin, 0, 0);
+        const slotEnd = new Date(currentDate);
+        slotEnd.setHours(endHour, endMin, 0, 0);
+        buildSubSlots(slotStart, slotEnd);
+      } else {
+        // Overnight window: create two sub-windows for this day
+        // Evening window: start -> 24:00 of currentDate
+        const slotStartEvening = new Date(currentDate);
+        slotStartEvening.setHours(startHour, startMin, 0, 0);
+        const slotEndEvening = new Date(currentDate);
+        slotEndEvening.setHours(24, 0, 0, 0); // midnight next day
+        buildSubSlots(slotStartEvening, slotEndEvening);
+
+        // Morning window: 00:00 -> end on this day
+        const slotStartMorning = new Date(currentDate);
+        slotStartMorning.setHours(0, 0, 0, 0);
+        const slotEndMorning = new Date(currentDate);
+        slotEndMorning.setHours(endHour, endMin, 0, 0);
+        buildSubSlots(slotStartMorning, slotEndMorning);
       }
-      
-      // Add final slot of the day if there's time left
-      if (availableStart < slotEnd) {
-        const duration = (slotEnd - availableStart) / (1000 * 60);
-        if (duration >= 30) {
-          daySlots.push({
-            start: new Date(availableStart),
-            end: new Date(slotEnd),
-            duration: duration,
-          });
-        }
-      }
-      
+
       slots.push(...daySlots);
     }
     
@@ -446,10 +460,73 @@ function fitsPrefs(task, slot, prefs, dailyHours) {
 }
 
 /**
+ * Generate break suggestions using AWS Bedrock
+ */
+async function generateBreakSuggestions(beforeTask, afterTask, breakDuration) {
+  try {
+    const prompt = `You are a wellness and productivity assistant. Generate 2-3 brief, specific suggestions for a ${breakDuration}-minute break between tasks.
+
+Context:
+- Previous activity: ${beforeTask || 'Start of day'}
+- Next activity: ${afterTask || 'End of day'}
+
+Provide suggestions that:
+1. Help with mental recovery and context switching
+2. Are realistic for the time available
+3. Consider the transition between activities
+4. Promote physical and mental wellbeing
+
+Return as a JSON array of strings, each suggestion 5-10 words max.
+Example: ["Take a short walk outside", "Stretch and hydrate", "Quick breathing exercises"]
+
+Return ONLY the JSON array, no other text.`;
+
+    const modelId = 'us.anthropic.claude-3-5-sonnet-20241022-v2:0';
+    const input = {
+      modelId: modelId,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify({
+        anthropic_version: "bedrock-2023-05-31",
+        max_tokens: 200,
+        temperature: 0.7,
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    };
+    
+    const command = new InvokeModelCommand(input);
+    const response = await bedrockClient.send(command);
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+    
+    if (responseBody.content && responseBody.content.length > 0) {
+      const textContent = responseBody.content[0].text;
+      const jsonMatch = textContent.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const suggestions = JSON.parse(jsonMatch[0]);
+        return suggestions;
+      }
+    }
+    
+    // Fallback suggestions
+    return ['Take a short break', 'Stretch and hydrate', 'Rest your eyes'];
+  } catch (error) {
+    console.error('Failed to generate break suggestions:', error);
+    // Return generic suggestions as fallback
+    return ['Take a short break', 'Walk around', 'Stay hydrated'];
+  }
+}
+
+/**
  * Greedy placement algorithm
  * Places tasks in earliest available slots that fit preferences
+ * Now creates explicit break blocks with AI-generated suggestions
  */
-function greedyPlacement(tasks, slots, prefs) {
+async function greedyPlacement(tasks, slots, prefs) {
   const scheduledBlocks = [];
   const unscheduledTasks = [];
   const dailyHours = {}; // Track hours used per day
@@ -467,44 +544,129 @@ function greedyPlacement(tasks, slots, prefs) {
   // Sort slots by date
   const sortedSlots = [...slots].sort((a, b) => a.start - b.start);
   
+  const MAX_CHUNK_MIN = 90; // cap blocks at 90 minutes
+
   for (const task of sortedTasks) {
-    let placed = false;
-    
+    let remaining = task.duration || 60; // minutes remaining to schedule
+    const breakMinutes = prefs.breakMinutes || 15;
+
+    // Try to fill the task across multiple slots until remaining <= 0
     for (const slot of sortedSlots) {
-      if (fitsPrefs(task, slot, prefs, dailyHours)) {
-        const taskDuration = task.duration || 60;
-        const breakMinutes = prefs.breakMinutes || 15;
-        
-        const blockStart = new Date(slot.start);
-        const blockEnd = new Date(blockStart.getTime() + taskDuration * 60 * 1000);
-        
-        scheduledBlocks.push({
-          id: task.id || `task-${Date.now()}-${Math.random()}`,
-          title: task.title || task.name || 'Untitled Task',
-          start: blockStart.toISOString(),
-          end: blockEnd.toISOString(),
-          duration: taskDuration,
-          task: task,
-        });
-        
-        // Update daily hours
-        const dateKey = slot.start.toDateString();
-        dailyHours[dateKey] = (dailyHours[dateKey] || 0) + (taskDuration / 60);
-        
-        // Update slot (reduce available time)
-        const newSlotStart = new Date(blockEnd.getTime() + breakMinutes * 60 * 1000);
-        slot.start = newSlotStart;
-        slot.duration = (slot.end - newSlotStart) / (1000 * 60);
-        
-        placed = true;
-        break;
+      if (remaining <= 0) break;
+
+      // Skip slots that are too small to be useful
+      const usable = Math.max(0, Math.floor(slot.duration - breakMinutes));
+      if (usable < 15) continue;
+
+      // Determine chunk length (capped at MAX_CHUNK_MIN and usable)
+      const chunk = Math.min(remaining, usable, MAX_CHUNK_MIN);
+
+      // Check daily hours constraints for this chunk
+      const dateKey = slot.start.toDateString();
+      const hoursUsed = dailyHours[dateKey] || 0;
+      const chunkHours = chunk / 60;
+      const maxHoursPerDay = prefs.maxHoursPerDay || 8;
+      const mode = prefs.mode || 'flexi';
+      const allowedLimit = mode === 'strict' ? maxHoursPerDay : maxHoursPerDay * 1.2;
+      if (hoursUsed + chunkHours > allowedLimit) {
+        // Can't place this chunk on this day
+        continue;
       }
+
+      // Check deadline: ensure slot.start is not after task.deadline
+      if (task.deadline) {
+        const deadline = new Date(task.deadline);
+        if (slot.start > deadline) {
+          continue;
+        }
+      }
+
+      // Place the task chunk
+      const blockStart = new Date(slot.start);
+      const blockEnd = new Date(blockStart.getTime() + chunk * 60 * 1000);
+
+      scheduledBlocks.push({
+        id: `${task.id || `task-${Date.now()}-${Math.random()}`}-${scheduledBlocks.length}`,
+        title: task.title || task.name || 'Untitled Task',
+        start: blockStart.toISOString(),
+        end: blockEnd.toISOString(),
+        duration: chunk,
+        type: 'task',
+        task: task,
+      });
+
+      // Create break block after this task chunk (if there's space)
+      if (breakMinutes >= 5 && slot.duration >= chunk + breakMinutes) {
+        const breakStart = new Date(blockEnd);
+        const breakEnd = new Date(breakStart.getTime() + breakMinutes * 60 * 1000);
+        
+        // Generate AI suggestions for this break (do this after all blocks are created)
+        scheduledBlocks.push({
+          id: `break-${scheduledBlocks.length}-${Date.now()}`,
+          title: `Break (${breakMinutes} min)`,
+          start: breakStart.toISOString(),
+          end: breakEnd.toISOString(),
+          duration: breakMinutes,
+          type: 'break',
+          suggestions: [], // Will be populated with AI suggestions later
+          beforeTask: task.title || task.name,
+          afterTask: null, // Will be updated if there's a next task
+        });
+      }
+
+      // Update daily hours
+      dailyHours[dateKey] = (dailyHours[dateKey] || 0) + chunkHours;
+
+      // Reduce remaining time and advance slot
+      remaining -= chunk;
+      const newSlotStart = new Date(blockEnd.getTime() + breakMinutes * 60 * 1000);
+      slot.start = newSlotStart;
+      slot.duration = (slot.end - newSlotStart) / (1000 * 60);
     }
-    
-    if (!placed) {
-      unscheduledTasks.push(task);
+
+    if (remaining > 0) {
+      // Could not fully schedule the task
+      unscheduledTasks.push({ ...task, remaining });
     }
   }
+  
+  // Now generate AI suggestions for breaks
+  // Update afterTask context for each break
+  for (let i = 0; i < scheduledBlocks.length; i++) {
+    const block = scheduledBlocks[i];
+    if (block.type === 'break') {
+      // Find the next task block
+      const nextTask = scheduledBlocks.slice(i + 1).find(b => b.type === 'task');
+      if (nextTask) {
+        block.afterTask = nextTask.title;
+      }
+    }
+  }
+  
+  // Generate suggestions for a sample of breaks (to avoid too many API calls)
+  const breakBlocks = scheduledBlocks.filter(b => b.type === 'break');
+  const breakSuggestionPromises = breakBlocks.slice(0, 10).map(async (breakBlock) => {
+    try {
+      const suggestions = await generateBreakSuggestions(
+        breakBlock.beforeTask,
+        breakBlock.afterTask,
+        breakBlock.duration
+      );
+      breakBlock.suggestions = suggestions;
+    } catch (error) {
+      console.error('Failed to generate suggestions for break:', error);
+      breakBlock.suggestions = ['Take a short break', 'Stretch and relax'];
+    }
+  });
+  
+  await Promise.all(breakSuggestionPromises);
+  
+  // For remaining breaks without suggestions, use generic ones
+  scheduledBlocks.forEach(block => {
+    if (block.type === 'break' && (!block.suggestions || block.suggestions.length === 0)) {
+      block.suggestions = ['Take a short break', 'Stretch and hydrate', 'Rest your mind'];
+    }
+  });
   
   return { scheduledBlocks, unscheduledTasks, dailyHours };
 }
@@ -533,13 +695,27 @@ app.post('/plan/generate', async function(req, res) {
     };
     
     console.log(`Generating plan for ${tasks.length} tasks with ${prefs.mode} mode`);
+    // Debug: log incoming preferences and tasks summary
+    try {
+      console.log('Preferences:', JSON.stringify(prefs));
+      console.log('Tasks summary:', tasks.map(t => ({ title: t.title, duration: t.duration, deadline: t.deadline })).slice(0, 20));
+    } catch (e) {
+      console.log('Failed to stringify prefs/tasks for debug', e);
+    }
     
     // Build available slots
     const slots = buildSlots(start, end, prefs, existingEvents);
     console.log(`Found ${slots.length} available time slots`);
+    // Debug: show first few slots to inspect times (ISO)
+    try {
+      const sample = slots.slice(0, 12).map(s => ({ start: s.start.toISOString(), end: s.end.toISOString(), duration: s.duration }));
+      console.log('Sample slots:', JSON.stringify(sample, null, 2));
+    } catch (e) {
+      console.log('Failed to stringify sample slots', e);
+    }
     
-    // Run greedy placement
-    const result = greedyPlacement(tasks, slots, prefs);
+    // Run greedy placement (now async due to AI break suggestions)
+    const result = await greedyPlacement(tasks, slots, prefs);
     
     res.json({
       success: true,

@@ -3,12 +3,6 @@ import Image from "next/image";
 
 const featureCards = [
   {
-    title: "Drop in everything",
-    description:
-      "Paste your class schedules, deadlines, habits, and self-care routines in plain English. PlayBlocks parses and tags each item automatically.",
-    icon: "📌",
-  },
-  {
     title: "Adaptive time blocks",
     description:
       "Our planner defends your buffers, threads in smart breaks, and automatically splits long study sessions so you avoid burnout.",
@@ -20,35 +14,26 @@ const featureCards = [
       "One click exports everything back to Google, Apple, or Outlook calendar so your day is always synchronized.",
     icon: "📆",
   },
+  {
+    title: "Working-hours controls",
+    description:
+      "Set daily focus windows with an intuitive slider (supports overnight ranges). The planner only schedules work inside your preferred hours.",
+    icon: "⏱️",
+  },
 ];
 
 const workflowSteps = [
   {
     title: "Import",
-    body: "Upload your existing calendar (.ics) and paste your syllabus. We combine it with your routines and buffers.",
+  body: "Upload your calendar (.ics) or paste your syllabus. We parse events, recurring routines, and extract tasks so nothing is missed.",
   },
   {
     title: "Tune",
-    body: "Set focus hours, max hours per day, and recovery time. Strict or flexible mode—your choice.",
+  body: "Adjust working-hours, max hours per day, preferred days, and recurring building blocks so the plan fits your life.",
   },
   {
     title: "Plan",
-    body: "Generate a smart schedule in seconds, drag-and-drop refinements, then export it back to your calendar.",
-  },
-];
-
-const socialProof = [
-  {
-    quote:
-      "I used to spend Sunday nights reorganizing my calendar. PlayBlocks gives me a balanced week in under two minutes.",
-    name: "Anjali, CS + Design",
-    role: "Student & TA, Carnegie Mellon",
-  },
-  {
-    quote:
-      "The auto-buffering between workouts, classes, and study blocks is *chef's kiss*. I finally stop over-booking myself.",
-    name: "Marc, Dual major",
-    role: "Pre-med & Music",
+  body: "Generate a plan that splits tasks across free slots, avoids conflicts, preserves buffers, and exports clean .ics for your calendar.",
   },
 ];
 
@@ -129,6 +114,22 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Scheduler teaser: keep interactive scheduler on the dedicated Planner page only */}
+      <section className="mx-auto max-w-6xl px-6 pb-24">
+        <div className="glass-panel rounded-lg p-8 text-center">
+          <h3 className="text-xl font-semibold">Try the interactive scheduler</h3>
+          <p className="mt-2 text-sm text-slate-600">The full import + smart-scheduler lives on the Planner page. Open the Planner to upload calendars, set working hours, and auto-generate your week.</p>
+          <div className="mt-4">
+            <Link
+              href="/plan"
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-rose-300 via-violet-200 to-sky-200 px-6 py-2 text-sm font-semibold text-violet-900 shadow-md"
+            >
+              Open Planner
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <section id="features" className="mx-auto max-w-6xl px-6 pb-24">
         <div className="mb-12 flex flex-col gap-4 text-center">
           <p className="text-xs uppercase tracking-[0.3em] text-rose-400">Why PlayBlocks</p>
@@ -148,6 +149,27 @@ export default function Home() {
               </div>
               <p className="mb-2 text-lg font-semibold text-slate-900">{card.title}</p>
               <p className="text-sm text-slate-600">{card.description}</p>
+              {/* extra short bullets for clarity */}
+              <ul className="mt-3 text-sm text-slate-500 list-disc pl-5 space-y-1">
+                {card.title === 'Working-hours controls' && (
+                  <>
+                    <li>Slider supports overnight windows (e.g., 9pm–2am).</li>
+                    <li>Planner only schedules inside your preferred window.</li>
+                  </>
+                )}
+                {card.title === 'Adaptive time blocks' && (
+                  <>
+                    <li>Automatically splits long tasks into focused sessions.</li>
+                    <li>Respects buffers and recommended breaks between chunks.</li>
+                  </>
+                )}
+                {card.title === 'Calendar ready' && (
+                  <>
+                    <li>Export a polished .ics ready for Google/Apple/Outlook.</li>
+                    <li>One-click download or push to your calendar.</li>
+                  </>
+                )}
+              </ul>
             </div>
           ))}
           <div className="glass-panel relative flex h-full flex-col justify-between overflow-hidden p-6">
@@ -199,44 +221,44 @@ export default function Home() {
                 <div>
                   <p className="text-lg font-semibold text-slate-900">{step.title}</p>
                   <p className="text-sm text-slate-600">{step.body}</p>
+                  <ul className="mt-3 text-sm text-slate-500 list-disc pl-5 space-y-1">
+                    {index === 0 && (
+                      <>
+                        <li>Upload a .ics from Google/Apple/Outlook or paste schedule text.</li>
+                        <li>We parse events, keep recurring blocks (classes), and preview imported items.</li>
+                      </>
+                    )}
+                    {index === 1 && (
+                      <>
+                        <li>Set working-hours, max daily hours, and recovery time.</li>
+                        <li>Add recurring building blocks so the AI avoids conflicts.</li>
+                      </>
+                    )}
+                    {index === 2 && (
+                      <>
+                        <li>AI splits tasks into focused chunks (≤ 90m) and inserts breaks.</li>
+                        <li>Review, export as .ics, or drag-and-drop to fine-tune.</li>
+                      </>
+                    )}
+                  </ul>
                 </div>
               </div>
             ))}
+            
+            <div className="glass-panel p-6 text-sm text-slate-600">
+              <h4 className="font-semibold mb-2">Behind the scenes</h4>
+              <p>
+                PlayBlocks combines your calendar events, recurring weekly blocks, and AI-extracted tasks to build a conflict-free plan. We prefer your selected work window, cap sessions to 90 minutes, and recommend breaks so study feels sustainable.
+              </p>
+              <p className="mt-3">
+                Scheduling respects local time zones and attempts to place sessions before deadlines. If a task can't be fully scheduled, it'll appear in the unscheduled list with remaining minutes.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-24">
-        <div className="glass-panel grid gap-10 p-10 md:grid-cols-[0.7fr_0.3fr]">
-          <div className="space-y-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-rose-400">Testimonials</p>
-            <h3 className="text-3xl font-semibold text-slate-900">Made for ambitious students who don’t want to sacrifice sleep.</h3>
-            <div className="grid gap-6 md:grid-cols-2">
-              {socialProof.map((item) => (
-                <div key={item.name} className="rounded-2xl border border-pink-200/60 bg-white/90 p-4 text-sm text-slate-600">
-                  <p className="mb-4 text-slate-700">“{item.quote}”</p>
-                  <p className="text-xs uppercase tracking-wide text-rose-400">{item.name}</p>
-                  <p className="text-xs text-slate-500">{item.role}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="flex flex-col justify-between gap-6 text-sm text-slate-600">
-            <div>
-              <p className="text-4xl font-semibold text-slate-900">83%</p>
-              <p className="text-xs uppercase tracking-[0.25em] text-rose-400">students feel more balanced after one week</p>
-            </div>
-            <div>
-              <p className="text-4xl font-semibold text-slate-900">12 hrs</p>
-              <p className="text-xs uppercase tracking-[0.25em] text-rose-400">planning time saved each month</p>
-            </div>
-            <div>
-              <p className="text-4xl font-semibold text-slate-900">4.9/5</p>
-              <p className="text-xs uppercase tracking-[0.25em] text-rose-400">avg satisfaction score across alpha cohort</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      
 
       <section className="mx-auto max-w-4xl px-6 pb-32 text-center">
         <div className="glass-panel space-y-6 px-8 py-12">
@@ -264,4 +286,3 @@ export default function Home() {
     </div>
   );
 }
-

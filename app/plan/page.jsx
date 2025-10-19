@@ -8,6 +8,7 @@ import {
   fetchScheduledBlocks,
   fetchTasks,
   generatePlan,
+  savePreferences,
   saveScheduledBlocks,
   saveTasks,
 } from "../../src/lib/api";
@@ -94,6 +95,12 @@ function normalizeTask(task) {
   };
 }
 
+function minutesToTimeStr(mins) {
+  const hh = String(Math.floor(mins / 60)).padStart(2, "0");
+  const mm = String(mins % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 function formatTimeRange(startIso, endIso) {
   const start = new Date(startIso);
   const end = new Date(endIso);
@@ -117,6 +124,10 @@ export default function PlanPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationMessage, setGenerationMessage] = useState("");
   const [generationError, setGenerationError] = useState("");
+
+  // lightweight working-hours slider (minutes from midnight)
+  const [workStartMin, setWorkStartMin] = useState(9 * 60);
+  const [workEndMin, setWorkEndMin] = useState(17 * 60);
 
   useEffect(() => {
     const loadWorkspace = async () => {
@@ -301,9 +312,26 @@ export default function PlanPage() {
 
     try {
       const calendarEvents = existingEvents.length ? existingEvents : icsEvents;
+      // Merge in working-hours from the lightweight slider so the plan generator
+      // receives the user's preferred daily window.
+      const prefs = {
+        ...defaultPreferences(),
+        workHoursStart: minutesToTimeStr(workStartMin),
+        workHoursEnd: minutesToTimeStr(workEndMin),
+      };
+
+      // Persist preferences so backend read via /preferences matches slider
+      try {
+        await savePreferences({
+          ...prefs,
+        });
+      } catch (err) {
+        console.warn('Failed to persist preferences before generatePlan', err);
+      }
+
       const response = await generatePlan(
         tasks,
-        defaultPreferences(),
+        prefs,
         calendarEvents,
         new Date().toISOString(),
         new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
@@ -480,6 +508,45 @@ export default function PlanPage() {
 
               <div className="rounded-xl border border-pink-200/60 bg-white/70 p-4 text-xs text-slate-500">
                 Tip: Need a sample file? Export any calendar view as .ics. We only read the time, title, and duration of each event.
+              </div>
+
+              {/* lightweight working hours slider (non-persistent) */}
+              <div className="rounded-xl border border-pink-200/60 bg-white/80 p-4">
+                <p className="text-sm font-semibold text-slate-900">Working hours (optional)</p>
+                <p className="mt-1 text-xs text-slate-500">Use the sliders to set the daily window where you prefer scheduled blocks.</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-rose-400">Start</label>
+                    <div className="mt-2 flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={0}
+                        max={1439}
+                        step={15}
+                        value={workStartMin}
+                        onChange={(e) => setWorkStartMin(Number(e.target.value))}
+                        className="w-full"
+                      />
+                      <div className="w-24 text-right text-sm text-slate-600">{`${String(Math.floor(workStartMin/60)).padStart(2,'0')}:${String(workStartMin%60).padStart(2,'0')}`}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-rose-400">End</label>
+                    <div className="mt-2 flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={0}
+                        max={1439}
+                        step={15}
+                        value={workEndMin}
+                        onChange={(e) => setWorkEndMin(Number(e.target.value))}
+                        className="w-full"
+                      />
+                      <div className="w-24 text-right text-sm text-slate-600">{`${String(Math.floor(workEndMin/60)).padStart(2,'0')}:${String(workEndMin%60).padStart(2,'0')}`}</div>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-slate-500">Note: This is a lightweight slider only—no Bedrock integration. It will influence client-side scheduling when generating a plan.</p>
               </div>
             </div>
           )}

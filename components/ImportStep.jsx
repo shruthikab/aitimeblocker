@@ -11,6 +11,8 @@ import {
   fetchScheduledBlocks,
   saveScheduledBlocks,
   exportScheduleToICS,
+  fetchPreferences,
+  savePreferences,
 } from "@/lib/api";
 import { buildICSFromBlocks } from "@/lib/ics";
 
@@ -56,6 +58,10 @@ const dayNamesFull = [
 ];
 
 export default function ImportStep() {
+  // Temporary dev marker to confirm this component is loaded in the browser
+  useEffect(() => {
+    console.log('DEV: rendering components/ImportStep.jsx');
+  }, []);
   const [fileName, setFileName] = useState(null);
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState('idle');
@@ -73,6 +79,13 @@ export default function ImportStep() {
   // Recurring blocks (classes, habits, buffers)
   const [recurringBlocks, setRecurringBlocks] = useState([]);
   const [recurringStatus, setRecurringStatus] = useState('idle');
+
+  // Working hours preferences (stored as minutes from 00:00)
+  const [enforceWorkingHours, setEnforceWorkingHours] = useState(false);
+  const [workHoursStartMin, setWorkHoursStartMin] = useState(19 * 60);
+  const [workHoursEndMin, setWorkHoursEndMin] = useState(21 * 60);
+  const [breakMinutes, setBreakMinutes] = useState(15);
+  const [prefsStatus, setPrefsStatus] = useState('idle');
 
   // load persisted data on mount
   useEffect(() => {
@@ -93,8 +106,48 @@ export default function ImportStep() {
         setScheduleStatus('done');
         setScheduleMessage('Loaded your last saved plan ✅');
       }
+      try {
+        const prefs = await fetchPreferences();
+        if (prefs) {
+          if (prefs.workHoursStart) {
+            const mins = timeStrToMinutes(prefs.workHoursStart);
+            if (!isNaN(mins)) setWorkHoursStartMin(mins);
+          }
+          if (prefs.workHoursEnd) {
+            const mins = timeStrToMinutes(prefs.workHoursEnd);
+            if (!isNaN(mins)) setWorkHoursEndMin(mins);
+          }
+          if (typeof prefs.enforceWorkingHours !== 'undefined') setEnforceWorkingHours(!!prefs.enforceWorkingHours);
+          if (typeof prefs.breakMinutes !== 'undefined') setBreakMinutes(Number(prefs.breakMinutes) || 15);
+        }
+      } catch (err) {
+        // ignore
+      }
     })();
   }, []);
+
+  function timeStrToMinutes(t) {
+    if (!t || typeof t !== 'string') return NaN;
+    const m = t.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return NaN;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    return hh * 60 + mm;
+  }
+
+  function minutesToTimeStr(mins) {
+    const clamped = Math.max(0, Math.min(24 * 60, Number(mins) || 0));
+    const hh = Math.floor(clamped / 60);
+    const mm = clamped % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+
+  function getBreakSuggestion(minutes) {
+    if (minutes <= 5) return 'Quick stretch or deep breath';
+    if (minutes <= 15) return 'Stand up, walk around, hydrate';
+    if (minutes <= 30) return 'Short walk or quick review of flashcards';
+    return 'Longer rest: light exercise, snack, or power nap';
+  }
 
   const onFile = async (file) => {
     if (!file) return;
@@ -208,15 +261,20 @@ export default function ImportStep() {
       // Fetch existing events to avoid conflicts
       const existingEvents = await fetchEvents();
       
-      // Generate plan with default preferences
+      // Generate plan with preferences (use slider minutes -> HH:MM)
       const preferences = {
         mode: 'flexi',
-        workHoursStart: '09:00',
-        workHoursEnd: '17:00',
+        // Always send slider-derived hours to the backend (integrate slider with AI)
+        workHoursStart: minutesToTimeStr(workHoursStartMin),
+        workHoursEnd: minutesToTimeStr(workHoursEndMin),
+        enforceWorkingHours: !!enforceWorkingHours,
         maxHoursPerDay: 8,
         breakMinutes: 15,
         preferredDays: [1, 2, 3, 4, 5], // Mon-Fri
       };
+
+      // Debugging aid: show the prefs and parsed tasks being sent to the generator
+      console.log('Auto-schedule: sending generatePlan with preferences', preferences, { tasksCount: tasks.length });
       
       // Set date range (today to 60 days from now)
       const startDate = new Date().toISOString();
@@ -498,6 +556,90 @@ export default function ImportStep() {
           🎯 Paste your upcoming tests, quizzes, assignments, and deadlines below. 
           AI will automatically extract tasks AND timeblock them in your schedule!
         </p>
+      
+        <div className="mb-4 p-3 border rounded bg-gray-50">
+          <h4 className="font-medium mb-2">Working time preferences</h4>
+          <div className="flex items-center gap-4 flex-wrap">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={enforceWorkingHours} onChange={(e) => setEnforceWorkingHours(e.target.checked)} />
+              Enforce working hours
+            </label>
+            <div className="flex items-center gap-3">
+              <div className="text-sm">{minutesToTimeStr(workHoursStartMin)}</div>
+              <input
+                aria-label="Start hour"
+                type="range"
+                min="0"
+                max="1439"
+                value={workHoursStartMin}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  // enforce at least 30 minutes gap
+                  if (v >= workHoursEndMin - 30) {
+                    setWorkHoursStartMin(Math.max(0, workHoursEndMin - 30));
+                  } else {
+                    setWorkHoursStartMin(v);
+                  }
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                aria-label="End hour"
+                type="range"
+                min="0"
+                max="1439"
+                value={workHoursEndMin}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v <= workHoursStartMin + 30) {
+                    setWorkHoursEndMin(Math.min(1439, workHoursStartMin + 30));
+                  } else {
+                    setWorkHoursEndMin(v);
+                  }
+                }}
+              />
+              <div className="text-sm">{minutesToTimeStr(workHoursEndMin)}</div>
+            </div>
+            <div className="ml-auto">
+              <button
+                className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                onClick={async () => {
+                  setPrefsStatus('saving');
+                  try {
+                    await savePreferences({
+                      enforceWorkingHours,
+                      workHoursStart: minutesToTimeStr(workHoursStartMin),
+                      workHoursEnd: minutesToTimeStr(workHoursEndMin),
+                      breakMinutes,
+                    });
+                    setPrefsStatus('saved');
+                    setTimeout(() => setPrefsStatus('idle'), 1500);
+                  } catch (err) {
+                    console.error('Failed to save prefs', err);
+                    setPrefsStatus('error');
+                    setTimeout(() => setPrefsStatus('idle'), 2000);
+                  }
+                }}
+              >
+                {prefsStatus === 'saving' ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <label className="text-sm">Suggested break (minutes)</label>
+            <input
+              type="number"
+              min={5}
+              max={60}
+              value={breakMinutes}
+              onChange={(e) => setBreakMinutes(Number(e.target.value) || 15)}
+              className="w-24 px-2 py-1 border rounded"
+            />
+          </div>
+          {prefsStatus === 'saved' && <p className="text-xs text-green-600 mt-2">Preferences saved.</p>}
+          {prefsStatus === 'error' && <p className="text-xs text-red-600 mt-2">Failed to save preferences.</p>}
+        </div>
         
         <textarea
           value={syllabusText}
@@ -665,6 +807,10 @@ export default function ImportStep() {
                             </div>
                           )}
                         </div>
+                      </div>
+                      {/* Recommend a short break after each block based on breakMinutes */}
+                      <div className="ml-8 mt-2 text-xs text-gray-500">
+                        Recommended break: {breakMinutes} minutes — {getBreakSuggestion(breakMinutes)}
                       </div>
                     </div>
                   );

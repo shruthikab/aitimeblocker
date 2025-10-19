@@ -32,18 +32,18 @@ export default function RootLayout({ children }) {
             </Link>
             <nav className="flex items-center gap-4 text-sm font-medium text-slate-600">
               <Link href="/plan" className="transition hover:text-violet-900">Planner</Link>
-              <a
-                href="#features"
+              <Link
+                href="/#features"
                 className="hidden transition hover:text-violet-900 sm:inline"
               >
                 Features
-              </a>
-              <a
-                href="#how-it-works"
+              </Link>
+              <Link
+                href="/#how-it-works"
                 className="hidden transition hover:text-violet-900 md:inline"
               >
                 How it works
-              </a>
+              </Link>
               <Link
                 href="/plan"
                 className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-rose-300 via-violet-200 to-sky-200 px-4 py-2 text-violet-900 shadow-lg shadow-rose-200/70 transition hover:-translate-y-0.5"

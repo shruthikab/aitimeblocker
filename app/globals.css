@@ -6,7 +6,7 @@
   --muted: #6f6691;
   --card: rgba(255, 255, 255, 0.82);
   --card-border: rgba(201, 179, 255, 0.55);
-  --accent: linear-gradient(135deg, #f8b3d8, #b6d7ff, #c5f2d6);
+  --accent: linear-gradient(135deg, #70003c, #002b61, #036b2b);
   color-scheme: light;
 }
 
