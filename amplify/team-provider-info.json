@@ -25,7 +25,7 @@
       "function": {
         "playblocksfunction": {
           "deploymentBucketName": "amplify-playblocks-dev-48202-deployment",
-          "s3Key": "amplify-builds/playblocksfunction-4176636f5a394c4d3969-build.zip"
+          "s3Key": "amplify-builds/playblocksfunction-6f61325765534d786d6b-build.zip"
         }
       },
       "api": {

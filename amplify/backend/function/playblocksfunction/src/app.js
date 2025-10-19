@@ -622,7 +622,8 @@ Return only valid JSON, no other text.`;
     console.log('Calling Bedrock with prompt length:', prompt.length);
     
     // Call Bedrock Claude model
-    const modelId = 'anthropic.claude-3-5-sonnet-20241022-v2:0'; // Claude 3.5 Sonnet
+    // Use inference profile for cross-region routing and on-demand access
+    const modelId = 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'; // Claude 3.5 Sonnet with US inference profile
     
     const input = {
       modelId: modelId,
