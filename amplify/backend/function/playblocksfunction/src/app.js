@@ -569,7 +569,15 @@ app.post('/plan/generate', async function(req, res) {
 ****************************/
 
 const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
-const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us-east-1' });
+
+// Configure Bedrock client with explicit credentials
+const bedrockClient = new BedrockRuntimeClient({
+  region: 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID_BEDROCK || process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY_BEDROCK || process.env.AWS_SECRET_ACCESS_KEY
+  }
+});
 
 /**
  * Parse tasks from syllabus text using AWS Bedrock (Claude)
@@ -614,7 +622,7 @@ Return only valid JSON, no other text.`;
     console.log('Calling Bedrock with prompt length:', prompt.length);
     
     // Call Bedrock Claude model
-    const modelId = 'anthropic.claude-3-haiku-20240307-v1:0'; // Claude 3 Haiku (faster, often pre-approved)
+    const modelId = 'anthropic.claude-3-5-sonnet-20241022-v2:0'; // Claude 3.5 Sonnet
     
     const input = {
       modelId: modelId,
