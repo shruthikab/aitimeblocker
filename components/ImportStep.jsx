@@ -1,6 +1,18 @@
 "use client";
-import { useState } from "react";
-import { parseTasks, generatePlan, fetchEvents } from "@/lib/api";
+import { useEffect, useState } from "react";
+import {
+  parseTasks,
+  generatePlan,
+  fetchEvents,
+  fetchTasks,
+  saveTasks,
+  fetchRecurringBlocks,
+  saveRecurringBlocks,
+  fetchScheduledBlocks,
+  saveScheduledBlocks,
+  exportScheduleToICS,
+} from "@/lib/api";
+import { buildICSFromBlocks } from "@/lib/ics";
 
 function parseICS(text) {
   const events = [];
@@ -33,6 +45,16 @@ function parseICS(text) {
   return events;
 }
 
+const dayNamesFull = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
 export default function ImportStep() {
   const [fileName, setFileName] = useState(null);
   const [events, setEvents] = useState([]);
@@ -46,6 +68,33 @@ export default function ImportStep() {
   // State for auto-scheduling
   const [scheduledBlocks, setScheduledBlocks] = useState([]);
   const [scheduleStatus, setScheduleStatus] = useState('idle');
+  const [scheduleMessage, setScheduleMessage] = useState('');
+
+  // Recurring blocks (classes, habits, buffers)
+  const [recurringBlocks, setRecurringBlocks] = useState([]);
+  const [recurringStatus, setRecurringStatus] = useState('idle');
+
+  // load persisted data on mount
+  useEffect(() => {
+    (async () => {
+      const [blocks, tasks, schedule] = await Promise.all([
+        fetchRecurringBlocks(),
+        fetchTasks(),
+        fetchScheduledBlocks(),
+      ]);
+      if (blocks?.length) {
+        setRecurringBlocks(blocks);
+      }
+      if (tasks?.length) {
+        setParsedTasks(tasks);
+      }
+      if (schedule?.length) {
+        setScheduledBlocks(schedule);
+        setScheduleStatus('done');
+        setScheduleMessage('Loaded your last saved plan ✅');
+      }
+    })();
+  }, []);
 
   const onFile = async (file) => {
     if (!file) return;
@@ -88,6 +137,14 @@ export default function ImportStep() {
     }
   };
   
+  const persistTasks = async (tasksToSave) => {
+    try {
+      await saveTasks(tasksToSave);
+    } catch (error) {
+      console.error('Failed to persist tasks', error);
+    }
+  };
+
   const handleParseSyllabus = async () => {
     if (!syllabusText.trim()) {
       alert('Please enter syllabus text');
@@ -97,8 +154,17 @@ export default function ImportStep() {
     setParseStatus('parsing');
     try {
       const result = await parseTasks(syllabusText);
-      setParsedTasks(result.tasks || []);
+      const tasks = (result.tasks || []).map((task, index) => ({
+        id: task.id || `task-${Date.now()}-${index}`,
+        title: task.title || `Task ${index + 1}`,
+        duration: task.duration || 60,
+        deadline: task.deadline || null,
+        priority: task.priority || 'medium',
+        description: task.description || '',
+      }));
+      setParsedTasks(tasks);
       setParseStatus('done');
+      await persistTasks(tasks);
     } catch (err) {
       console.error('Parse error:', err);
       setParseStatus('error');
@@ -119,9 +185,17 @@ export default function ImportStep() {
     try {
       // Step 1: Parse tasks with AI
       const parseResult = await parseTasks(syllabusText);
-      const tasks = parseResult.tasks || [];
+      const tasks = (parseResult.tasks || []).map((task, index) => ({
+        id: task.id || `task-${Date.now()}-${index}`,
+        title: task.title || `Task ${index + 1}`,
+        duration: task.duration || 60,
+        deadline: task.deadline || null,
+        priority: task.priority || 'medium',
+        description: task.description || '',
+      }));
       setParsedTasks(tasks);
       setParseStatus('done');
+      await persistTasks(tasks);
       
       if (tasks.length === 0) {
         alert('No tasks found in the text. Try including deadlines like "Assignment 1 due Oct 25" or "Midterm exam on Nov 5"');
@@ -149,9 +223,15 @@ export default function ImportStep() {
       const endDate = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
       
       const planResult = await generatePlan(tasks, preferences, existingEvents, startDate, endDate);
-      
-      setScheduledBlocks(planResult.scheduledBlocks || []);
+
+      const blocks = (planResult.scheduledBlocks || []).map((block, index) => ({
+        ...block,
+        id: block.id || `scheduled-${Date.now()}-${index}`,
+      }));
+      setScheduledBlocks(blocks);
       setScheduleStatus('done');
+      setScheduleMessage(planResult?.message || `Scheduled ${blocks.length} blocks`);
+      await saveScheduledBlocks(blocks);
       
       // Scroll to results
       setTimeout(() => {
@@ -163,6 +243,78 @@ export default function ImportStep() {
       setParseStatus('error');
       setScheduleStatus('error');
       alert(err.message || 'Failed to parse and schedule tasks');
+    }
+  };
+
+  const addRecurringBlock = () => {
+    setRecurringBlocks((prev) => [
+      ...prev,
+      {
+        id: `habit-${Date.now()}`,
+        title: 'New routine',
+        dayOfWeek: 1,
+        startTime: '09:00',
+        endTime: '10:00',
+        bufferBefore: 0,
+        bufferAfter: 0,
+      },
+    ]);
+  };
+
+  const updateRecurringBlock = (id, field, value) => {
+    setRecurringBlocks((prev) =>
+      prev.map((block) => (block.id === id ? { ...block, [field]: value } : block))
+    );
+  };
+
+  const removeRecurringBlock = (id) => {
+    setRecurringBlocks((prev) => prev.filter((block) => block.id !== id));
+  };
+
+  const persistRecurring = async () => {
+    setRecurringStatus('saving');
+    try {
+      await saveRecurringBlocks(recurringBlocks);
+      setRecurringStatus('saved');
+      setTimeout(() => setRecurringStatus('idle'), 2000);
+    } catch (error) {
+      console.error('Failed to save recurring blocks', error);
+      setRecurringStatus('error');
+      setTimeout(() => setRecurringStatus('idle'), 4000);
+    }
+  };
+
+  const downloadICS = async () => {
+    try {
+  let icsContent = null;
+
+      try {
+        icsContent = await exportScheduleToICS();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!scheduledBlocks.length || !message.includes('No scheduled blocks')) {
+          throw error;
+        }
+      }
+
+      if (!icsContent && scheduledBlocks.length) {
+        icsContent = buildICSFromBlocks(scheduledBlocks);
+      }
+
+      if (!icsContent) {
+        throw new Error('No scheduled blocks to export yet. Generate a plan first.');
+      }
+
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'playblocks-schedule.ics';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nothing to export yet';
+      alert(message);
     }
   };
 
@@ -220,6 +372,125 @@ export default function ImportStep() {
         </div>
       </section>
 
+      {/* Recurring Routines & Buffers */}
+      <section className="w-full p-4 border rounded-lg bg-white shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold">🧱 Weekly Building Blocks</h3>
+            <p className="text-sm text-gray-600">
+              Add classes, habits, workouts, commutes, or buffer blocks. We keep them in your calendar and avoid scheduling over them.
+            </p>
+          </div>
+          <button
+            onClick={addRecurringBlock}
+            className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          >
+            + Add block
+          </button>
+        </div>
+
+        {recurringBlocks.length === 0 && (
+          <p className="text-sm text-gray-500 mb-4">
+            No routines yet. Add one to block time for recurring commitments.
+          </p>
+        )}
+
+        <div className="space-y-4">
+          {recurringBlocks.map((block) => (
+            <div key={block.id} className="border rounded-lg p-4 bg-gray-50">
+              <div className="flex flex-col md:flex-row md:items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Title</label>
+                  <input
+                    type="text"
+                    value={block.title}
+                    onChange={(e) => updateRecurringBlock(block.id, 'title', e.target.value)}
+                    className="w-full px-3 py-2 border rounded"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Day</label>
+                  <select
+                    value={block.dayOfWeek}
+                    onChange={(e) => updateRecurringBlock(block.id, 'dayOfWeek', Number(e.target.value))}
+                    className="px-3 py-2 border rounded"
+                  >
+                    {dayNamesFull.map((day, index) => (
+                      <option key={day} value={index}>
+                        {day}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Start</label>
+                  <input
+                    type="time"
+                    value={block.startTime}
+                    onChange={(e) => updateRecurringBlock(block.id, 'startTime', e.target.value)}
+                    className="px-3 py-2 border rounded"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">End</label>
+                  <input
+                    type="time"
+                    value={block.endTime}
+                    onChange={(e) => updateRecurringBlock(block.id, 'endTime', e.target.value)}
+                    className="px-3 py-2 border rounded"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Buffer ⏱️ (min)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={block.bufferBefore || 0}
+                      onChange={(e) => updateRecurringBlock(block.id, 'bufferBefore', Number(e.target.value))}
+                      className="w-20 px-3 py-2 border rounded"
+                      placeholder="Before"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      value={block.bufferAfter || 0}
+                      onChange={(e) => updateRecurringBlock(block.id, 'bufferAfter', Number(e.target.value))}
+                      className="w-20 px-3 py-2 border rounded"
+                      placeholder="After"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => removeRecurringBlock(block.id)}
+                  className="text-sm text-red-600 hover:text-red-800"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={persistRecurring}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            disabled={recurringStatus === 'saving'}
+          >
+            Save weekly blocks
+          </button>
+          <span className="text-sm text-gray-600">
+            Status: {recurringStatus === 'idle' ? 'idle' : recurringStatus}
+          </span>
+        </div>
+      </section>
+
       {/* Syllabus Parsing Section */}
       <section className="w-full p-4 border rounded-lg bg-white shadow-sm">
         <h3 className="text-lg font-semibold mb-2">📚 Smart Scheduler: Paste Your Syllabus</h3>
@@ -264,6 +535,9 @@ export default function ImportStep() {
               setScheduledBlocks([]);
               setParseStatus('idle');
               setScheduleStatus('idle');
+              setScheduleMessage('');
+              persistTasks([]);
+              void saveScheduledBlocks([]).catch(() => {});
             }}
           >
             Clear
@@ -352,7 +626,8 @@ export default function ImportStep() {
                   const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                   const timeStr = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                   const endTimeStr = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                  const durationHrs = Math.round(block.duration / 60 * 10) / 10;
+                  const durationMinutes = block.duration || Math.max(15, (end.getTime() - start.getTime()) / 60000);
+                  const durationHrs = Math.round((durationMinutes / 60) * 10) / 10;
                   
                   return (
                     <div key={i} className="mb-4 pb-4 border-b last:border-b-0 last:pb-0 last:mb-0 bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
@@ -394,6 +669,15 @@ export default function ImportStep() {
                     </div>
                   );
                 })}
+            </div>
+            <div className="flex items-center justify-between mt-4 gap-4 flex-wrap">
+              <p className="text-sm text-gray-600">{scheduleMessage}</p>
+              <button
+                onClick={downloadICS}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                ⬇️ Export to Calendar (.ics)
+              </button>
             </div>
             
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">

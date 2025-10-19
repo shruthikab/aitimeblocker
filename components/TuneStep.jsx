@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-export default function TuneStep({ onSettingsChange }) {
+export default function TuneStep({ onSettingsChange, initialPreferences, isLoading }) {
   const [mode, setMode] = useState("flexi"); // flexi or strict
   const [workHoursStart, setWorkHoursStart] = useState("09:00");
   const [workHoursEnd, setWorkHoursEnd] = useState("17:00");
@@ -9,29 +9,38 @@ export default function TuneStep({ onSettingsChange }) {
   const [breakMinutes, setBreakMinutes] = useState(15);
   const [preferredDays, setPreferredDays] = useState([1, 2, 3, 4, 5]); // Mon-Fri
 
-  const handleModeChange = (newMode) => {
+  useEffect(() => {
+    if (!initialPreferences) return;
+    setMode(initialPreferences.mode || "flexi");
+    setWorkHoursStart(initialPreferences.workHoursStart || "09:00");
+    setWorkHoursEnd(initialPreferences.workHoursEnd || "17:00");
+    setMaxHoursPerDay(initialPreferences.maxHoursPerDay || 8);
+    setBreakMinutes(initialPreferences.breakMinutes ?? 15);
+    setPreferredDays(initialPreferences.preferredDays || [1, 2, 3, 4, 5]);
+  }, [initialPreferences]);
+
+  const handleModeChange = async (newMode) => {
     setMode(newMode);
-    if (onSettingsChange) {
-      onSettingsChange({
-        mode: newMode,
-        workHoursStart,
-        workHoursEnd,
-        maxHoursPerDay,
-        breakMinutes,
-        preferredDays,
-      });
-    }
+    await handleSettingsUpdate({
+      mode: newMode,
+      workHoursStart,
+      workHoursEnd,
+      maxHoursPerDay,
+      breakMinutes,
+      preferredDays,
+    });
   };
 
-  const handleSettingsUpdate = () => {
+  const handleSettingsUpdate = async (overrides = {}) => {
     if (onSettingsChange) {
-      onSettingsChange({
+      await onSettingsChange({
         mode,
         workHoursStart,
         workHoursEnd,
         maxHoursPerDay,
         breakMinutes,
         preferredDays,
+        ...overrides,
       });
     }
   };
@@ -41,6 +50,7 @@ export default function TuneStep({ onSettingsChange }) {
       ? preferredDays.filter((d) => d !== day)
       : [...preferredDays, day].sort();
     setPreferredDays(newDays);
+    handleSettingsUpdate({ preferredDays: newDays });
   };
 
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -88,14 +98,22 @@ export default function TuneStep({ onSettingsChange }) {
           <input
             type="time"
             value={workHoursStart}
-            onChange={(e) => setWorkHoursStart(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setWorkHoursStart(value);
+              handleSettingsUpdate({ workHoursStart: value });
+            }}
             className="px-3 py-2 border rounded-lg"
           />
           <span className="text-gray-500">to</span>
           <input
             type="time"
             value={workHoursEnd}
-            onChange={(e) => setWorkHoursEnd(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setWorkHoursEnd(value);
+              handleSettingsUpdate({ workHoursEnd: value });
+            }}
             className="px-3 py-2 border rounded-lg"
           />
         </div>
@@ -111,7 +129,11 @@ export default function TuneStep({ onSettingsChange }) {
           min="1"
           max="12"
           value={maxHoursPerDay}
-          onChange={(e) => setMaxHoursPerDay(Number(e.target.value))}
+          onChange={(e) => {
+            const value = Number(e.target.value);
+            setMaxHoursPerDay(value);
+            handleSettingsUpdate({ maxHoursPerDay: value });
+          }}
           className="w-full"
         />
         <div className="flex justify-between text-xs text-gray-500">
@@ -131,7 +153,11 @@ export default function TuneStep({ onSettingsChange }) {
           max="60"
           step="5"
           value={breakMinutes}
-          onChange={(e) => setBreakMinutes(Number(e.target.value))}
+          onChange={(e) => {
+            const value = Number(e.target.value);
+            setBreakMinutes(value);
+            handleSettingsUpdate({ breakMinutes: value });
+          }}
           className="w-full"
         />
         <div className="flex justify-between text-xs text-gray-500">
@@ -161,10 +187,11 @@ export default function TuneStep({ onSettingsChange }) {
       </div>
 
       <button
-        onClick={handleSettingsUpdate}
-        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+        onClick={() => handleSettingsUpdate()}
+        disabled={isLoading}
+        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
       >
-        Save Preferences
+        {isLoading ? "Loading…" : "Save Preferences"}
       </button>
     </section>
   );
