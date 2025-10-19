@@ -1,11 +1,18 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calendar, momentLocalizer } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
 import moment from "moment";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { DndProvider, useDrag, useDrop } from "react-dnd";
-import { generatePlan as generatePlanAPI } from "../src/lib/api";
+import { DndProvider, useDrag } from "react-dnd";
+import {
+  defaultPreferences,
+  exportScheduleToICS,
+  generatePlan as generatePlanAPI,
+  saveScheduledBlocks,
+  saveTasks,
+} from "@/lib/api";
+import { buildICSFromBlocks } from "@/lib/ics";
 
 const localizer = momentLocalizer(moment);
 const DragAndDropCalendar = withDragAndDrop(Calendar);
@@ -70,16 +77,79 @@ function DraggableTaskCard({ task, onUpdate, onRemove }) {
   );
 }
 
-export default function PlanStepWithDnd({ preferences, existingEvents = [] }) {
-  const [tasks, setTasks] = useState([
-    { id: "1", title: "Write report", duration: 120, deadline: null },
-    { id: "2", title: "Review code", duration: 90, deadline: null },
-    { id: "3", title: "Team standup", duration: 30, deadline: null },
-  ]);
+export default function PlanStepWithDnd({
+  preferences,
+  existingEvents = [],
+  initialTasks = [],
+  recurringBlocks = [],
+  initialScheduledBlocks = [],
+  onScheduleUpdate,
+  onTasksUpdate,
+}) {
+  const [tasks, setTasks] = useState(
+    initialTasks.length
+      ? initialTasks
+      : [
+          { id: "1", title: "Write report", duration: 120, deadline: null },
+          { id: "2", title: "Review code", duration: 90, deadline: null },
+          { id: "3", title: "Team standup", duration: 30, deadline: null },
+        ]
+  );
   const [scheduledBlocks, setScheduledBlocks] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [stats, setStats] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [bootstrappedTasks, setBootstrappedTasks] = useState(false);
+  const [bootstrappedSchedule, setBootstrappedSchedule] = useState(false);
+
+  useEffect(() => {
+    if (!bootstrappedTasks && initialTasks.length) {
+      setTasks(initialTasks);
+      setBootstrappedTasks(true);
+    }
+  }, [initialTasks, bootstrappedTasks]);
+
+  useEffect(() => {
+    if (!bootstrappedSchedule && initialScheduledBlocks.length) {
+      setScheduledBlocks(
+        initialScheduledBlocks.map((block) => ({
+          ...block,
+          start: new Date(block.start),
+          end: new Date(block.end),
+        }))
+      );
+      setBootstrappedSchedule(true);
+    }
+  }, [initialScheduledBlocks, bootstrappedSchedule]);
+
+  useEffect(() => {
+    if (bootstrappedTasks || initialTasks.length === 0) {
+      onTasksUpdate?.(tasks);
+      const timeout = setTimeout(() => {
+        saveTasks(tasks).catch((err) => console.error('Failed to save tasks', err));
+      }, 400);
+      return () => clearTimeout(timeout);
+    }
+  }, [tasks, onTasksUpdate, bootstrappedTasks, initialTasks.length]);
+
+  const persistSchedule = useCallback(
+    async (blocks) => {
+      const payload = blocks.map((block) => ({
+        ...block,
+        start: block.start instanceof Date ? block.start.toISOString() : block.start,
+        end: block.end instanceof Date ? block.end.toISOString() : block.end,
+      }));
+      try {
+        await saveScheduledBlocks(payload);
+        onScheduleUpdate?.(payload);
+      } catch (err) {
+        console.error('Failed to save schedule', err);
+      }
+    },
+    [onScheduleUpdate]
+  );
 
   // Add new task
   const addTask = () => {
@@ -108,33 +178,23 @@ export default function PlanStepWithDnd({ preferences, existingEvents = [] }) {
     setError(null);
 
     try {
-      const defaultPrefs = {
-        mode: "flexi",
-        workHoursStart: "09:00",
-        workHoursEnd: "17:00",
-        maxHoursPerDay: 8,
-        breakMinutes: 15,
-        preferredDays: [1, 2, 3, 4, 5],
-      };
-
       const data = await generatePlanAPI(
         tasks,
-        preferences || defaultPrefs,
+        preferences || defaultPreferences(),
         existingEvents,
         new Date().toISOString(),
         new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() // 2 weeks
       );
 
       if (data.success) {
-        // Convert ISO strings to Date objects for react-big-calendar
-        const blocks = data.scheduledBlocks.map((block) => ({
+        const blocksForCalendar = (data.scheduledBlocks || []).map((block) => ({
           ...block,
           start: new Date(block.start),
           end: new Date(block.end),
         }));
-        setScheduledBlocks(blocks);
+        setScheduledBlocks(blocksForCalendar);
         setStats(data.stats);
-        console.log("Plan generated successfully:", data);
+        await persistSchedule(blocksForCalendar);
       } else {
         setError(data.error || "Failed to generate plan");
       }
@@ -152,6 +212,7 @@ export default function PlanStepWithDnd({ preferences, existingEvents = [] }) {
       block.id === event.id ? { ...block, start, end } : block
     );
     setScheduledBlocks(updatedBlocks);
+    void persistSchedule(updatedBlocks);
   };
 
   // Handle event drop (drag and drop)
@@ -160,21 +221,31 @@ export default function PlanStepWithDnd({ preferences, existingEvents = [] }) {
       block.id === event.id ? { ...block, start, end } : block
     );
     setScheduledBlocks(updatedBlocks);
+    void persistSchedule(updatedBlocks);
   };
 
   // Combine scheduled blocks with existing events for display
-  const calendarEvents = [
-    ...scheduledBlocks.map((block) => ({
-      ...block,
-      type: "scheduled",
-    })),
-    ...existingEvents.map((event) => ({
-      ...event,
-      start: new Date(event.start),
-      end: new Date(event.end),
-      type: "existing",
-    })),
-  ];
+  const formattedExistingEvents = useMemo(
+    () =>
+      existingEvents.map((event) => ({
+        ...event,
+        start: new Date(event.start),
+        end: new Date(event.end),
+        type: "existing",
+      })),
+    [existingEvents]
+  );
+
+  const calendarEvents = useMemo(
+    () => [
+      ...scheduledBlocks.map((block) => ({
+        ...block,
+        type: "scheduled",
+      })),
+      ...formattedExistingEvents,
+    ],
+    [scheduledBlocks, formattedExistingEvents]
+  );
 
   // Custom event styling
   const eventStyleGetter = (event) => {
@@ -258,6 +329,53 @@ export default function PlanStepWithDnd({ preferences, existingEvents = [] }) {
                 💡 <strong>Tip:</strong> Drag tasks to reorder. After generating, drag
                 events on the calendar to reschedule them!
               </div>
+              <button
+                onClick={async () => {
+                  try {
+                    setIsExporting(true);
+                    let ics = await exportScheduleToICS();
+
+                    if (!ics) {
+                      const sourceBlocks = (scheduledBlocks.length
+                        ? scheduledBlocks
+                        : initialScheduledBlocks
+                      ).map((block) => ({
+                        ...block,
+                        start:
+                          block.start instanceof Date
+                            ? block.start.toISOString()
+                            : block.start,
+                        end:
+                          block.end instanceof Date
+                            ? block.end.toISOString()
+                            : block.end,
+                      }));
+                      ics = buildICSFromBlocks(sourceBlocks) ?? undefined;
+                    }
+
+                    if (!ics) {
+                      throw new Error('No scheduled blocks to export yet');
+                    }
+
+                    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'playblocks-schedule.ics';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    const message = err instanceof Error ? err.message : 'Nothing to export yet';
+                    alert(message);
+                  } finally {
+                    setIsExporting(false);
+                  }
+                }}
+                disabled={isExporting}
+                className="w-full mt-4 px-4 py-2 border border-green-500 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50"
+              >
+                {isExporting ? 'Preparing download…' : '⬇️ Export schedule (.ics)'}
+              </button>
             </div>
           </div>
 
@@ -269,7 +387,7 @@ export default function PlanStepWithDnd({ preferences, existingEvents = [] }) {
             >
               <div className="flex items-center justify-between mb-4">
                 <h4 className="font-semibold text-lg">Your Schedule</h4>
-                <div className="flex gap-3 text-xs">
+                <div className="flex gap-3 text-xs items-center">
                   <div className="flex items-center gap-1">
                     <div className="w-3 h-3 bg-green-500 rounded"></div>
                     <span>Scheduled</span>
@@ -278,6 +396,11 @@ export default function PlanStepWithDnd({ preferences, existingEvents = [] }) {
                     <div className="w-3 h-3 bg-indigo-500 rounded"></div>
                     <span>Existing</span>
                   </div>
+                  {recurringBlocks.length > 0 && (
+                    <div className="flex items-center gap-1 text-gray-500">
+                      <span>🧱 {recurringBlocks.length} weekly blocks protected</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
