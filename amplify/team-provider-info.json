@@ -25,11 +25,14 @@
       "function": {
         "playblocksfunction": {
           "deploymentBucketName": "amplify-playblocks-dev-48202-deployment",
-          "s3Key": "amplify-builds/playblocksfunction-435335755742374f4579-build.zip"
+          "s3Key": "amplify-builds/playblocksfunction-62305044736558725053-build.zip"
         }
       },
       "api": {
         "playblocks": {}
+      },
+      "storage": {
+        "playblocksstorage": {}
       }
     }
   }
