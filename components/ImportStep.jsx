@@ -63,11 +63,27 @@ export default function ImportStep() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ events }),
       });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error || 'Upload failed');
+
+      // Read body as text once, then try to parse JSON. This avoids "body stream already read" errors.
+      const text = await res.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (parseErr) {
+        console.error('Upload: server returned non-JSON response:', {
+          status: res.status,
+          statusText: res.statusText,
+          bodyPreview: text && text.slice(0, 200),
+        });
+        throw new Error(`Server returned non-JSON response (status ${res.status}). Check console for details.`);
+      }
+
+      if (!res.ok) throw new Error(data?.error || 'Upload failed');
       setStatus('done');
     } catch (err) {
       console.error(err);
+      // Show a friendly alert so the user knows to check console / network tab
+      alert(err.message || 'Upload failed — check the browser console or server logs for details.');
       setStatus('error');
     }
   };

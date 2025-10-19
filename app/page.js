@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import ImportStep from "../src/components/ImportStep";
+import ImportStep from "../components/ImportStep";
 
 export default function Home() {
   return (
@@ -8,14 +8,6 @@ export default function Home() {
       <main className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <Image
-            className="dark:invert mx-auto"
-            src="/next.svg"
-            alt="Next.js logo"
-            width={180}
-            height={38}
-            priority
-          />
           <h1 className="text-5xl font-bold mt-8 mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600">
             PlayBlocks
           </h1>

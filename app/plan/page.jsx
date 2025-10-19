@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import TuneStep from "../../components/TuneStep";
-import { fetchEvents, fetchPreferences } from "../../lib/api";
+import { fetchEvents, fetchPreferences } from "../../src/lib/api";
 
 // Dynamically import PlanStepWithDnd to avoid SSR issues with react-big-calendar
 const PlanStepWithDnd = dynamic(
