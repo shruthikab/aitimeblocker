@@ -1,6 +1,85 @@
 [
   {
-    "Action": [],
-    "Resource": []
+    "Action": [
+      "dynamodb:PutItem",
+      "dynamodb:GetItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:BatchWriteItem"
+    ],
+    "Resource": [
+      {
+        "Fn::Sub": [
+          "arn:aws:dynamodb:${region}:${account}:table/${tablename}",
+          {
+            "region": {
+              "Ref": "AWS::Region"
+            },
+            "account": {
+              "Ref": "AWS::AccountId"
+            },
+            "tablename": {
+              "Ref": "storageplayblocksstorageName"
+            }
+          }
+        ]
+      },
+      {
+        "Fn::Sub": [
+          "arn:aws:dynamodb:${region}:${account}:table/${tablename}/*",
+          {
+            "region": {
+              "Ref": "AWS::Region"
+            },
+            "account": {
+              "Ref": "AWS::AccountId"
+            },
+            "tablename": {
+              "Ref": "storageplayblocksstorageName"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Action": [
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream"
+    ],
+    "Resource": [
+      {
+        "Fn::Sub": [
+          "arn:aws:bedrock:${region}::foundation-model/amazon.titan-text-premier-v1:0",
+          {
+            "region": {
+              "Ref": "AWS::Region"
+            }
+          }
+        ]
+      },
+      {
+        "Fn::Sub": [
+          "arn:aws:bedrock:${region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+          {
+            "region": {
+              "Ref": "AWS::Region"
+            }
+          }
+        ]
+      },
+      {
+        "Fn::Sub": [
+          "arn:aws:bedrock:${region}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
+          {
+            "region": {
+              "Ref": "AWS::Region"
+            }
+          }
+        ]
+      }
+    ]
   }
 ]

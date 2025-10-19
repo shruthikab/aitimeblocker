@@ -46,6 +46,17 @@
   "function": {
     "playblocksfunction": {
       "build": true,
+      "dependsOn": [
+        {
+          "attributes": [
+            "Name",
+            "Arn",
+            "StreamArn"
+          ],
+          "category": "storage",
+          "resourceName": "playblocksstorage"
+        }
+      ],
       "providerPlugin": "awscloudformation",
       "service": "Lambda"
     }
@@ -89,6 +100,12 @@
           "resourceName": "amplifyhosting"
         }
       ]
+    }
+  },
+  "storage": {
+    "playblocksstorage": {
+      "providerPlugin": "awscloudformation",
+      "service": "DynamoDB"
     }
   }
 }

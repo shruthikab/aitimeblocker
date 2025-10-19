@@ -18,12 +18,51 @@
       "name": "/import/ics",
       "lambdaFunction": "playblocksfunction",
       "permissions": {
+        "setting": "open"
+      }
+    },
+    "/tasks/parse": {
+      "name": "/tasks/parse",
+      "lambdaFunction": "playblocksfunction",
+      "permissions": {
+        "setting": "open"
+      }
+    },
+    "/plan/generate": {
+      "name": "/plan/generate",
+      "lambdaFunction": "playblocksfunction",
+      "permissions": {
+        "setting": "open"
+      }
+    },
+    "/preferences": {
+      "name": "/preferences",
+      "lambdaFunction": "playblocksfunction",
+      "permissions": {
         "setting": "private",
         "auth": [
           "create",
-          "read",
-          "update",
-          "delete"
+          "read"
+        ]
+      }
+    },
+    "/events": {
+      "name": "/events",
+      "lambdaFunction": "playblocksfunction",
+      "permissions": {
+        "setting": "private",
+        "auth": [
+          "read"
+        ]
+      }
+    },
+    "/tasks": {
+      "name": "/tasks",
+      "lambdaFunction": "playblocksfunction",
+      "permissions": {
+        "setting": "private",
+        "auth": [
+          "read"
         ]
       }
     }

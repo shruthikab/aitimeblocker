@@ -1,0 +1,171 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "DynamoDB table for Playblocks storage",
+  "Parameters": {
+    "partitionKeyName": {
+      "Type": "String",
+      "Default": "PK"
+    },
+    "partitionKeyType": {
+      "Type": "String",
+      "Default": "S"
+    },
+    "sortKeyName": {
+      "Type": "String",
+      "Default": "SK"
+    },
+    "sortKeyType": {
+      "Type": "String",
+      "Default": "S"
+    },
+    "tableName": {
+      "Type": "String",
+      "Default": "playblockstable"
+    },
+    "env": {
+      "Type": "String"
+    }
+  },
+  "Conditions": {
+    "ShouldNotCreateEnvResources": {
+      "Fn::Equals": [
+        {
+          "Ref": "env"
+        },
+        "NONE"
+      ]
+    }
+  },
+  "Resources": {
+    "DynamoDBTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": {
+          "Fn::If": [
+            "ShouldNotCreateEnvResources",
+            {
+              "Ref": "tableName"
+            },
+            {
+              "Fn::Join": [
+                "",
+                [
+                  {
+                    "Ref": "tableName"
+                  },
+                  "-",
+                  {
+                    "Ref": "env"
+                  }
+                ]
+              ]
+            }
+          ]
+        },
+        "AttributeDefinitions": [
+          {
+            "AttributeName": {
+              "Ref": "partitionKeyName"
+            },
+            "AttributeType": {
+              "Ref": "partitionKeyType"
+            }
+          },
+          {
+            "AttributeName": {
+              "Ref": "sortKeyName"
+            },
+            "AttributeType": {
+              "Ref": "sortKeyType"
+            }
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": {
+              "Ref": "partitionKeyName"
+            },
+            "KeyType": "HASH"
+          },
+          {
+            "AttributeName": {
+              "Ref": "sortKeyName"
+            },
+            "KeyType": "RANGE"
+          }
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "StreamSpecification": {
+          "StreamViewType": "NEW_AND_OLD_IMAGES"
+        },
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": false
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "Name": {
+      "Value": {
+        "Ref": "DynamoDBTable"
+      },
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-Name"
+        }
+      }
+    },
+    "Arn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "DynamoDBTable",
+          "Arn"
+        ]
+      },
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-Arn"
+        }
+      }
+    },
+    "StreamArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "DynamoDBTable",
+          "StreamArn"
+        ]
+      },
+      "Export": {
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-StreamArn"
+        }
+      }
+    },
+    "PartitionKeyName": {
+      "Value": {
+        "Ref": "partitionKeyName"
+      }
+    },
+    "PartitionKeyType": {
+      "Value": {
+        "Ref": "partitionKeyType"
+      }
+    },
+    "SortKeyName": {
+      "Value": {
+        "Ref": "sortKeyName"
+      }
+    },
+    "SortKeyType": {
+      "Value": {
+        "Ref": "sortKeyType"
+      }
+    },
+    "Region": {
+      "Value": {
+        "Ref": "AWS::Region"
+      }
+    }
+  }
+}
+
