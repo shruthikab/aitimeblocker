@@ -15,7 +15,7 @@ An AI-powered time blocking app for students. Import your calendar, log your ass
 | Layer | Technology |
 |---|---|
 | Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS |
-| Auth | AWS Cognito (OIDC via `react-oidc-context`) |
+| Calendar UI | react-big-calendar, ical.js |
 | AI | AWS Bedrock — Claude 3.5 Sonnet |
 | Backend | AWS Lambda (Express.js), API Gateway |
 | Database | DynamoDB |
@@ -39,10 +39,7 @@ cp .env.example .env.local
 
 | Variable | Description |
 |---|---|
-| `NEXT_PUBLIC_COGNITO_CLIENT_ID` | Cognito app client ID |
-| `NEXT_PUBLIC_COGNITO_DOMAIN` | Cognito hosted UI domain |
 | `NEXT_PUBLIC_API_BASE_URL` | API Gateway base URL |
-| `NEXT_PUBLIC_APP_URL` | App URL for Cognito logout redirect |
 
 ### 3. Run the development server
 
@@ -81,7 +78,6 @@ app/
   plan/page.jsx         # Main 3-step planner (Import → Log → Generate)
   api/                  # Next.js API routes (local in-memory storage)
 components/
-  AuthHeader.jsx        # Cognito auth header
   ImportStep.jsx        # ICS file import UI
   PlanStep.jsx          # Plan generation UI
   TuneStep.jsx          # Preferences/settings
