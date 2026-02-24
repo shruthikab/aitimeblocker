@@ -3,7 +3,7 @@
 
 import type { RecurringBlock, ScheduledBlock, Task } from '@/lib/storage';
 
-const API_BASE_URL = 'https://bi6vs9an4k.execute-api.us-east-1.amazonaws.com/dev';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
 
 const DEFAULT_RANGE_DAYS = 60;
 

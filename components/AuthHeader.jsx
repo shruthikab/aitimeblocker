@@ -1,6 +1,6 @@
 "use client";
 import { useAuth } from "react-oidc-context";
-import { User, LogIn, LogOut, Menu } from "lucide-react";
+import { User, LogIn, LogOut } from "lucide-react";
 
 export default function AuthHeader() {
   const auth = useAuth();
@@ -22,13 +22,6 @@ export default function AuthHeader() {
       </header>
     );
   }
-
-  const signOutRedirect = () => {
-    const clientId = "735ne15erm27ujb0j0vbvnjjpo";
-    const logoutUri = "https://localhost:3000";
-    const cognitoDomain = "https://playblocks.auth.us-east-2.amazoncognito.com";
-    window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
-  };
 
   return (
     <header className="bg-white/80 backdrop-blur border-b border-gray-200 sticky top-0 z-50 shadow-sm">
