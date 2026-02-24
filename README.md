@@ -1,4 +1,4 @@
-# PlayBlocks — AI Time Blocker
+# PlayBlocks — AI Time Blocker (DubHacks 2025)
 
 An AI-powered time blocking app for students. Import your calendar, log your assignments, and let Claude generate a balanced study schedule around your existing commitments.
 
